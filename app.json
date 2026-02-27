@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "1a85fdba-0964-459c-ad35-0115e3e91d6e"
+      }
+    },
+    "android": {
+      "package": "com.grischke.home"
+    }
+  }
+}

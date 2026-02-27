@@ -1,0 +1,7 @@
+node_modules/
+.git/
+MusicScanAI/
+storage/
+downloads/
+projects/
+*.zip
