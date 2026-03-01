@@ -1,0 +1,14 @@
+apply plugin: 'com.android.library'
+
+android {
+    compileSdkVersion 34
+    defaultConfig {
+        minSdkVersion 26
+        targetSdkVersion 34
+    }
+}
+
+dependencies {
+    implementation files('libs/forever-companion-unity.aar')
+    implementation files('libs/unity-classes.jar')
+}

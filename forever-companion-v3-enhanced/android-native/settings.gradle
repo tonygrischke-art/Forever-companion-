@@ -1,0 +1,3 @@
+rootProject.name = "ForeverCompanion"
+include ':app'
+// include ':unity-aar-import'  // Uncomment after building the Unity module
