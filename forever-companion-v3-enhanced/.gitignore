@@ -1,0 +1,23 @@
+# Local files
+*.zip
+*.log
+build/
+.gradle/
+local.properties
+.bash_history
+.cache/
+.config/
+.expo/
+.npm/
+.npmrc
+.ssh/
+.termux/
+.wget-hsts
+.yarnrc
+node_modules/
+downloads/
+android-sdk/
+build-musicscan.sh
+setup-eas.sh
+storage/
+projects/
