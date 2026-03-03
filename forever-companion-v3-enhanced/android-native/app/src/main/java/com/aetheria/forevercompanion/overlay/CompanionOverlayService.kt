@@ -1,4 +1,5 @@
 package com.aetheria.forevercompanion.overlay
+import androidx.lifecycle.ViewModelStore
 
 import android.annotation.SuppressLint
 import android.app.Notification
@@ -57,6 +58,7 @@ import kotlin.math.sqrt
  */
 @AndroidEntryPoint
 class CompanionOverlayService : LifecycleService() {
+    private val vmStore = ViewModelStore()
 
     @Inject
     lateinit var contextMonitor: AppContextMonitor
@@ -163,7 +165,7 @@ class CompanionOverlayService : LifecycleService() {
         
         // Required for Compose inside WindowManager on Android 13+
         overlayView?.setViewTreeLifecycleOwner(this)
-        overlayView?.setViewTreeSavedStateRegistryOwner(this)
+        overlayView?.setViewTreeSavedStateRegistryOwner(null)
 
         try {
             windowManager.addView(overlayView, layoutParams)

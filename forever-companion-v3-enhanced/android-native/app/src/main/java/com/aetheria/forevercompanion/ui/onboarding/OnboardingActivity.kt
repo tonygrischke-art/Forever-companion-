@@ -1,9 +1,12 @@
 package com.aetheria.forevercompanion.ui.onboarding
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -25,18 +28,33 @@ class OnboardingActivity : ComponentActivity() {
     private val viewModel: OnboardingViewModel by viewModels()
     private lateinit var permissionManager: OverlayPermissionManager
 
+    private val overlayPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        if (Settings.canDrawOverlays(this)) {
+            finish()
+            startActivity(Intent(this, HomeActivity::class.java))
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         permissionManager = OverlayPermissionManager(this)
 
+        if (Settings.canDrawOverlays(this)) {
+            finish()
+            startActivity(Intent(this, HomeActivity::class.java))
+            return
+        }
+
         setContent {
             ForeverCompanionTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
                     OnboardingScreen(
-                        onComplete = { companionName ->
-                            viewModel.createCompanion(companionName)
-                            requestOverlayPermission()
-                        }
+                        onComplete = { requestOverlayPermission() }
                     )
                 }
             }
@@ -44,19 +62,16 @@ class OnboardingActivity : ComponentActivity() {
     }
 
     private fun requestOverlayPermission() {
-        permissionManager.requestPermission {
-            // Permission granted — go to home
-            startActivity(Intent(this, HomeActivity::class.java))
-            finish()
-        }
+        val intent = Intent(
+            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+            Uri.parse("package:$packageName")
+        )
+        overlayPermissionLauncher.launch(intent)
     }
 }
 
 @Composable
-fun OnboardingScreen(onComplete: (String) -> Unit) {
-    var step by remember { mutableIntStateOf(0) }
-    var companionName by remember { mutableStateOf("") }
-
+fun OnboardingScreen(onComplete: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -64,76 +79,27 @@ fun OnboardingScreen(onComplete: (String) -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        when (step) {
-            0 -> WelcomeStep(onNext = { step = 1 })
-            1 -> NameStep(
-                name = companionName,
-                onNameChange = { companionName = it },
-                onNext = { if (companionName.isNotBlank()) step = 2 }
-            )
-            2 -> PermissionStep(onComplete = { onComplete(companionName) })
+        Text(
+            "Meet Your Forever Companion",
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(16.dp))
+        Text(
+            "A little friend who lives on your screen - always there for you.",
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.bodyMedium
+        )
+        Spacer(Modifier.height(32.dp))
+        Text(
+            "To float above all apps, we need the \"Draw over other apps\" permission.",
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.bodySmall
+        )
+        Spacer(Modifier.height(32.dp))
+        Button(onClick = onComplete) {
+            Text("Grant Permission & Continue")
         }
-    }
-}
-
-@Composable
-fun WelcomeStep(onNext: () -> Unit) {
-    Text("✨", fontSize = 80.sp, textAlign = TextAlign.Center)
-    Spacer(Modifier.height(24.dp))
-    Text(
-        "Meet Your Forever Companion",
-        fontSize = 24.sp,
-        fontWeight = FontWeight.Bold,
-        textAlign = TextAlign.Center
-    )
-    Spacer(Modifier.height(12.dp))
-    Text(
-        "A little friend who lives on your screen — always there, always learning, always yours.",
-        textAlign = TextAlign.Center,
-        style = MaterialTheme.typography.bodyMedium
-    )
-    Spacer(Modifier.height(32.dp))
-    Button(onClick = onNext, modifier = Modifier.fillMaxWidth()) {
-        Text("Let's Begin")
-    }
-}
-
-@Composable
-fun NameStep(name: String, onNameChange: (String) -> Unit, onNext: () -> Unit) {
-    Text("🦊", fontSize = 80.sp, textAlign = TextAlign.Center)
-    Spacer(Modifier.height(24.dp))
-    Text("Name Your Companion", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-    Spacer(Modifier.height(16.dp))
-    OutlinedTextField(
-        value = name,
-        onValueChange = onNameChange,
-        label = { Text("Companion Name") },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth()
-    )
-    Spacer(Modifier.height(24.dp))
-    Button(
-        onClick = onNext,
-        enabled = name.isNotBlank(),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text("Continue")
-    }
-}
-
-@Composable
-fun PermissionStep(onComplete: () -> Unit) {
-    Text("🪟", fontSize = 80.sp, textAlign = TextAlign.Center)
-    Spacer(Modifier.height(24.dp))
-    Text("The Window Key", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-    Spacer(Modifier.height(12.dp))
-    Text(
-        "To stay by your side across all apps, your companion needs permission to float above other windows. We'll ask for it next.",
-        textAlign = TextAlign.Center,
-        style = MaterialTheme.typography.bodyMedium
-    )
-    Spacer(Modifier.height(32.dp))
-    Button(onClick = onComplete, modifier = Modifier.fillMaxWidth()) {
-        Text("Grant the Window Key")
     }
 }

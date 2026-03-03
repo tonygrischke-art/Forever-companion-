@@ -47,7 +47,8 @@ class ForeverCompanionApplication : Application(), Configuration.Provider {
         Timber.d("Application initialization complete")
     }
 
-    override fun getWorkManagerConfiguration(): Configuration {
+    override val workManagerConfiguration: Configuration
+        get() {
         return Configuration.Builder()
             .setWorkerFactory(workerFactory)
             .setMinimumLoggingLevel(if (BuildConfig.DEBUG) android.util.Log.DEBUG else android.util.Log.ERROR)
