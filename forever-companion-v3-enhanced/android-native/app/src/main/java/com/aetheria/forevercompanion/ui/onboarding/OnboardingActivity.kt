@@ -23,7 +23,7 @@ import com.aetheria.forevercompanion.ui.theme.ForeverCompanionTheme
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
-class OnboardingActivity : ComponentActivity() {
+class OnboardingActivity : androidx.fragment.app.FragmentActivity() {
 
     private val viewModel: OnboardingViewModel by viewModels()
     private lateinit var permissionManager: OverlayPermissionManager
