@@ -59,7 +59,8 @@ class MemorySnapshotWorker @AssistedInject constructor(
                 summary = "Day with $dominantMood mood. Screen time: ${totalScreenTime / 60_000}min.",
                 topAppsUsed = Gson().toJson(topApps),
                 totalScreenTime = totalScreenTime,
-                dominantMood = dominantMood
+                dominantMood = dominantMood,
+            significantMoments = "[]"
             )
 
             memorySnapshotDao.insert(snapshot)
