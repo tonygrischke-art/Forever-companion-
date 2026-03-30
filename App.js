@@ -16,7 +16,7 @@ const storage = new MMKV();
 const { width, height } = Dimensions.get('window');
 const TABS = ['home', 'library', 'playlists', 'player'];
 
-const GEMINI_API_KEY_PLACEHOLDER = 'YOUR_GEMINI_API_KEY';
+const DEFAULT_API_KEY = '';
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
 const GENRE_COLORS = {
@@ -53,7 +53,7 @@ export default function App() {
   // Core State
   const [tracks, setTracks] = useState([]);
   const [playlists, setPlaylists] = useState([]);
-  const [apiKey, setApiKey] = useState(storage.getString('apiKey') || GEMINI_API_KEY_PLACEHOLDER);
+  const [apiKey, setApiKey] = useState(storage.getString('apiKey') || DEFAULT_API_KEY);
   
   // UI & Navigation
   const [tab, setTab] = useState('home');

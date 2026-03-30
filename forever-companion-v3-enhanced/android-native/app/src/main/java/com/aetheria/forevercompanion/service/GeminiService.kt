@@ -16,7 +16,7 @@ data class GeminiResponse(val text: String, val isError: Boolean = false)
 @Singleton
 class GeminiService @Inject constructor() {
 
-    private val apiKey = "AIzaSyBxbKxGpbF7Gr7U3bncsV9sFhjOPycYaUE"
+    private val apiKey = BuildConfig.GEMINI_API_KEY
     private val baseUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
     private val systemPrompt = """

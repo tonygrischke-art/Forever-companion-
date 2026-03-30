@@ -19,6 +19,8 @@ android {
         vectorDrawables {
             useSupportLibrary true
         }
+        
+        buildConfigField "String", "GEMINI_API_KEY", "\"\""
     }
 
     buildTypes {
@@ -73,7 +75,7 @@ dependencies {
     implementation 'androidx.compose.ui:ui'
     implementation 'androidx.compose.ui:ui-graphics'
     implementation 'androidx.compose.ui:ui-tooling-preview'
-    implementation 'com.google.android.material:material:1.11.0
+        implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.compose.material:material-icons-extended'
     debugImplementation 'androidx.compose.ui:ui-tooling'
     debugImplementation 'androidx.compose.ui:ui-test-manifest'
