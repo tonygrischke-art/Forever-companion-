@@ -24,7 +24,6 @@ class InteractionHandler @Inject constructor(
         val phase = petStateManager.currentState.value.bondProgress?.relationshipPhase
             ?: RelationshipPhase.STRANGER
 
-        // Map mood to dialogue category
         val category = when (mood) {
             PetMood.FOCUS -> DialogueCategory.FOCUS_MODE
             PetMood.EXCITED -> DialogueCategory.PLAYFUL
@@ -34,16 +33,14 @@ class InteractionHandler @Inject constructor(
             else -> DialogueCategory.GREETING
         }
 
-        val dialogue = dialogueDao.getRandom(category, mood, phase)
+        // FIX: Pass allowed phases list instead of relying on broken enum ordering
+        val dialogue = dialogueDao.getRandom(category, mood, phase.allowedPhases())
             ?: dialogueDao.getRandomByCategory(DialogueCategory.GREETING)
 
         val message = dialogue?.text ?: getFallbackMessage(mood)
 
-        dialogue?.let {
-            dialogueDao.markUsed(it.id)
-        }
+        dialogue?.let { dialogueDao.markUsed(it.id) }
 
-        // Record in conversation history
         if (companionId != null) {
             conversationDao.insert(
                 ConversationEntity(
@@ -77,4 +74,14 @@ class InteractionHandler @Inject constructor(
         PetMood.PROUD -> "Look at you go! ⭐"
         PetMood.CONCERNED -> "Hey, you okay? 💙"
     }
+}
+
+/**
+ * Returns all relationship phases allowed up to and including the current phase.
+ * This replaces the broken "phase <= :phase" Room enum comparison.
+ */
+fun RelationshipPhase.allowedPhases(): List<RelationshipPhase> = when (this) {
+    RelationshipPhase.STRANGER -> listOf(RelationshipPhase.STRANGER)
+    RelationshipPhase.FRIEND -> listOf(RelationshipPhase.STRANGER, RelationshipPhase.FRIEND)
+    RelationshipPhase.COMPANION -> RelationshipPhase.entries.toList()
 }

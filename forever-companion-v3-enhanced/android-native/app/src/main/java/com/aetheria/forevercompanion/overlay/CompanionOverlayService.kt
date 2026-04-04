@@ -1,9 +1,7 @@
 package com.aetheria.forevercompanion.overlay
-import androidx.lifecycle.ViewModelStore
 
 import android.annotation.SuppressLint
 import android.app.Notification
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
@@ -13,7 +11,6 @@ import android.os.Build
 import android.os.IBinder
 import android.view.Gravity
 import android.view.MotionEvent
-import android.view.View
 import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -42,116 +39,71 @@ import javax.inject.Inject
 import kotlin.math.pow
 import kotlin.math.sqrt
 
-/**
- * CompanionOverlayService - The heart of the Aetheria Project
- * 
- * This service maintains the always-visible pet companion that floats
- * over all apps, providing emotional support and context-aware interactions.
- * 
- * Key Features:
- * - Android 15 compliant foreground service
- * - Magnetic corner snapping
- * - Auto-miniaturize for heavy apps
- * - Context-aware mood transitions
- * - Battery-optimized rendering
- * - Smooth drag interactions
- */
 @AndroidEntryPoint
 class CompanionOverlayService : LifecycleService() {
-    private val vmStore = ViewModelStore()
 
-    @Inject
-    lateinit var contextMonitor: AppContextMonitor
-    
-    @Inject
-    lateinit var petStateManager: PetStateManager
-    
-    @Inject
-    lateinit var interactionHandler: InteractionHandler
-    
-    @Inject
-    lateinit var renderingOptimizer: RenderingOptimizer
+    @Inject lateinit var contextMonitor: AppContextMonitor
+    @Inject lateinit var petStateManager: PetStateManager
+    @Inject lateinit var interactionHandler: InteractionHandler
+    @Inject lateinit var renderingOptimizer: RenderingOptimizer
 
     private lateinit var windowManager: WindowManager
     private var overlayView: ComposeView? = null
     private var layoutParams: WindowManager.LayoutParams? = null
-    
-    // State
+
     private val _isMinimized = MutableStateFlow(false)
     private val _currentMood = MutableStateFlow(PetMood.HAPPY)
     private var lastInteractionTime = System.currentTimeMillis()
-    
-    // Configuration
+
     private val magneticZones = listOf(
         MagneticZone(Gravity.TOP or Gravity.START, 20),
         MagneticZone(Gravity.TOP or Gravity.END, 20),
         MagneticZone(Gravity.BOTTOM or Gravity.START, 20),
         MagneticZone(Gravity.BOTTOM or Gravity.END, 20)
     )
-    
+
     private val heavyApps = setOf(
         "com.miHoYo.GenshinImpact",
         "com.roblox.client",
         "com.android.camera2",
         "com.google.android.GoogleCamera",
-        "com.android.chrome",
         "com.netflix.mediaclient"
     )
 
     override fun onCreate() {
         super.onCreate()
         Timber.d("CompanionOverlayService - Creating...")
-        
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-        
-        // Start context monitoring
         contextMonitor.startMonitoring()
-
-        // Start observing context
         observeAppContext()
         observePetState()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
-        
-        Timber.d("CompanionOverlayService - Starting foreground service")
-        
         when (intent?.action) {
             ACTION_START_COMPANION -> {
                 createOverlayWindow()
                 startForeground()
             }
-            ACTION_STOP_COMPANION -> {
-                stopCompanion()
-            }
-            ACTION_SHOW_DIALOGUE -> {
-                val message = intent.getStringExtra(EXTRA_MESSAGE)
-                showDialogue(message)
-            }
+            ACTION_STOP_COMPANION -> stopCompanion()
+            ACTION_SHOW_DIALOGUE -> showDialogue(intent.getStringExtra(EXTRA_MESSAGE))
         }
-        
         return START_STICKY
     }
 
-    /**
-     * Android 15 Requirement: Show overlay BEFORE starting foreground service
-     */
     private fun createOverlayWindow() {
-        if (overlayView != null) {
-            Timber.w("Overlay already exists, skipping creation")
-            return
-        }
-        
+        if (overlayView != null) return
+
         layoutParams = createWindowLayoutParams()
-        
+
         overlayView = ComposeView(this).apply {
             setContent {
                 ForeverCompanionTheme {
                     val petState by petStateManager.currentState.collectAsState()
                     val isMinimized by _isMinimized.collectAsState()
                     val currentMood by _currentMood.collectAsState()
-                    
+
                     PetOverlayContainer(
                         petState = petState,
                         isMinimized = isMinimized,
@@ -162,10 +114,11 @@ class CompanionOverlayService : LifecycleService() {
                 }
             }
         }
-        
-        // Required for Compose inside WindowManager on Android 13+
+
+        // FIX: Set BOTH lifecycle owner AND savedstate registry owner to 'this' (LifecycleService).
+        // Setting savedstate to null crashes Compose's rememberSaveable.
         overlayView?.setViewTreeLifecycleOwner(this)
-        overlayView?.setViewTreeSavedStateRegistryOwner(null)
+        overlayView?.setViewTreeSavedStateRegistryOwner(this)
 
         try {
             windowManager.addView(overlayView, layoutParams)
@@ -177,7 +130,7 @@ class CompanionOverlayService : LifecycleService() {
     }
 
     private fun createWindowLayoutParams(): WindowManager.LayoutParams {
-        val params = WindowManager.LayoutParams(
+        return WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
@@ -186,32 +139,26 @@ class CompanionOverlayService : LifecycleService() {
             WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
-        )
-        
-        // Start in bottom-right corner
-        params.gravity = Gravity.BOTTOM or Gravity.END
-        params.x = 20
-        params.y = 100
-        
-        return params
+        ).apply {
+            gravity = Gravity.BOTTOM or Gravity.END
+            x = 20
+            y = 100
+        }
     }
 
-    /**
-     * Setup touch handling for drag-to-move with magnetic snapping
-     */
     @SuppressLint("ClickableViewAccessibility")
     private fun setupDragListener() {
         val view = overlayView ?: return
         val params = layoutParams ?: return
-        
+
         var initialX = 0
         var initialY = 0
         var initialTouchX = 0f
         var initialTouchY = 0f
         var isDragging = false
-        val dragThreshold = 10 // pixels
-        
-        view.setOnTouchListener { v, event ->
+        val dragThreshold = 10
+
+        view.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     initialX = params.x
@@ -221,20 +168,23 @@ class CompanionOverlayService : LifecycleService() {
                     isDragging = false
                     true
                 }
-                
                 MotionEvent.ACTION_MOVE -> {
                     val deltaX = event.rawX - initialTouchX
                     val deltaY = event.rawY - initialTouchY
-                    
-                    // Check if movement exceeds threshold
-                    if (!isDragging && (Math.abs(deltaX) > dragThreshold || Math.abs(deltaY) > dragThreshold)) {
+
+                    if (!isDragging &&
+                        (Math.abs(deltaX) > dragThreshold || Math.abs(deltaY) > dragThreshold)) {
                         isDragging = true
                     }
-                    
+
                     if (isDragging) {
+                        // FIX: Y direction was inverted for bottom-anchored gravity.
+                        // WindowManager x/y offsets are always FROM the gravity anchor.
+                        // For BOTTOM gravity: positive y = move UP (away from bottom).
+                        // So we subtract deltaY (drag down = increase raw Y = decrease offset from bottom).
                         params.x = initialX + deltaX.toInt()
-                        params.y = initialY + (event.rawY - initialTouchY).toInt()
-                        
+                        params.y = initialY - (event.rawY - initialTouchY).toInt()
+
                         try {
                             windowManager.updateViewLayout(view, params)
                         } catch (e: Exception) {
@@ -243,45 +193,50 @@ class CompanionOverlayService : LifecycleService() {
                     }
                     true
                 }
-                
                 MotionEvent.ACTION_UP -> {
                     if (!isDragging) {
-                        // This was a tap, not a drag
                         handlePetTap()
                     } else {
-                        // Snap to nearest magnetic zone
                         snapToNearestZone()
                         recordInteraction("drag")
                     }
                     true
                 }
-                
                 else -> false
             }
         }
     }
 
-    /**
-     * Magnetic snapping to corners
-     */
     private fun snapToNearestZone() {
         val params = layoutParams ?: return
         val view = overlayView ?: return
-        
         val displayMetrics = resources.displayMetrics
-        val centerX = params.x + (view.width / 2)
-        val centerY = displayMetrics.heightPixels - params.y - (view.height / 2)
-        
-        // Find closest corner
+
+        // Convert current position to screen-space coordinates for distance calculation
+        val isBottomAnchored = params.gravity and Gravity.BOTTOM != 0
+        val isEndAnchored = params.gravity and Gravity.END != 0
+
+        val screenX = if (isEndAnchored)
+            displayMetrics.widthPixels - params.x - view.width
+        else
+            params.x
+
+        val screenY = if (isBottomAnchored)
+            displayMetrics.heightPixels - params.y - view.height
+        else
+            params.y
+
+        val centerX = screenX + view.width / 2
+        val centerY = screenY + view.height / 2
+
         val nearestZone = magneticZones.minByOrNull { zone ->
             val zoneX = if (zone.gravity and Gravity.END != 0) displayMetrics.widthPixels else 0
             val zoneY = if (zone.gravity and Gravity.BOTTOM != 0) displayMetrics.heightPixels else 0
-            
-            val dx = centerX - zoneX
-            val dy = centerY - zoneY
-            sqrt((dx * dx + dy * dy).toDouble())
+            val dx = (centerX - zoneX).toDouble()
+            val dy = (centerY - zoneY).toDouble()
+            sqrt(dx * dx + dy * dy)
         }
-        
+
         nearestZone?.let { zone ->
             lifecycleScope.launch {
                 animateToPosition(zone.gravity, zone.offset, zone.offset)
@@ -289,55 +244,41 @@ class CompanionOverlayService : LifecycleService() {
         }
     }
 
-    /**
-     * Smooth animation to target position
-     */
-    private suspend fun animateToPosition(gravity: Int, x: Int, y: Int) = withContext(Dispatchers.Main) {
-        val params = layoutParams ?: return@withContext
-        val view = overlayView ?: return@withContext
-        
-        val startGravity = params.gravity
-        val startX = params.x
-        val startY = params.y
-        
-        val animationDuration = 300L
-        val startTime = System.currentTimeMillis()
-        
-        while (System.currentTimeMillis() - startTime < animationDuration) {
-            val progress = ((System.currentTimeMillis() - startTime).toFloat() / animationDuration)
-                .coerceIn(0f, 1f)
-            
-            // Ease out cubic
-            val easedProgress = 1f - (1f - progress).pow(3)
-            
-            params.gravity = gravity
-            params.x = (startX + (x - startX) * easedProgress).toInt()
-            params.y = (startY + (y - startY) * easedProgress).toInt()
-            
-            try {
-                windowManager.updateViewLayout(view, params)
-            } catch (e: Exception) {
-                Timber.e(e, "Failed to update view during animation")
-                break
-            }
-            
-            delay(16) // ~60fps
-        }
-        
-        // Ensure final position is exact
-        params.gravity = gravity
-        params.x = x
-        params.y = y
-        try {
-            windowManager.updateViewLayout(view, params)
-        } catch (e: Exception) {
-            Timber.e(e, "Failed to set final position")
-        }
-    }
+    private suspend fun animateToPosition(gravity: Int, x: Int, y: Int) =
+        withContext(Dispatchers.Main) {
+            val params = layoutParams ?: return@withContext
+            val view = overlayView ?: return@withContext
 
-    /**
-     * Context-aware behavior
-     */
+            val startX = params.x
+            val startY = params.y
+            val animationDuration = 300L
+            val startTime = System.currentTimeMillis()
+
+            while (System.currentTimeMillis() - startTime < animationDuration) {
+                val progress = ((System.currentTimeMillis() - startTime).toFloat() / animationDuration)
+                    .coerceIn(0f, 1f)
+                val easedProgress = 1f - (1f - progress).pow(3)
+
+                params.gravity = gravity
+                params.x = (startX + (x - startX) * easedProgress).toInt()
+                params.y = (startY + (y - startY) * easedProgress).toInt()
+
+                try {
+                    windowManager.updateViewLayout(view, params)
+                } catch (e: Exception) {
+                    Timber.e(e, "Failed to update view during animation")
+                    break
+                }
+                delay(16)
+            }
+
+            // Snap to exact final position
+            params.gravity = gravity
+            params.x = x
+            params.y = y
+            try { windowManager.updateViewLayout(view, params) } catch (_: Exception) {}
+        }
+
     private fun observeAppContext() {
         lifecycleScope.launch {
             contextMonitor.currentApp.collect { appPackage ->
@@ -347,20 +288,10 @@ class CompanionOverlayService : LifecycleService() {
     }
 
     private suspend fun handleAppContextChange(appPackage: String) {
-        Timber.d("App context changed: $appPackage")
-        
-        // Auto-miniaturize for heavy apps
-        if (appPackage in heavyApps) {
-            _isMinimized.value = true
-            Timber.d("Minimized for heavy app: $appPackage")
-        } else {
-            _isMinimized.value = false
-        }
-        
-        // Update mood based on app category
+        _isMinimized.value = appPackage in heavyApps
+
         val category = contextMonitor.getAppCategory(appPackage)
         val newMood = mapCategoryToMood(category)
-        
         if (_currentMood.value != newMood) {
             transitionToMood(newMood)
         }
@@ -368,7 +299,6 @@ class CompanionOverlayService : LifecycleService() {
 
     private fun mapCategoryToMood(category: AppCategory): PetMood {
         val currentHour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-        
         return when {
             currentHour >= 23 || currentHour < 6 -> PetMood.SLEEPY
             category == AppCategory.PRODUCTIVITY -> PetMood.FOCUS
@@ -379,14 +309,7 @@ class CompanionOverlayService : LifecycleService() {
     }
 
     private suspend fun transitionToMood(newMood: PetMood) {
-        Timber.d("Transitioning mood: ${_currentMood.value} -> $newMood")
-        
-        // Smooth mood transition
-        withContext(Dispatchers.Main) {
-            _currentMood.value = newMood
-        }
-        
-        // Record emotional state change
+        withContext(Dispatchers.Main) { _currentMood.value = newMood }
         petStateManager.recordEmotionalState(
             mood = newMood,
             trigger = MoodTrigger.APP_CONTEXT,
@@ -394,69 +317,47 @@ class CompanionOverlayService : LifecycleService() {
         )
     }
 
-    /**
-     * Pet state observation
-     */
     private fun observePetState() {
         lifecycleScope.launch {
             petStateManager.currentState.collect { state ->
-                // React to state changes (evolution, accessories, etc.)
                 Timber.d("Pet state updated: $state")
             }
         }
     }
 
-    /**
-     * Interaction handlers
-     */
     private fun handlePetTap() {
-        Timber.d("Pet tapped")
         lastInteractionTime = System.currentTimeMillis()
-        
         lifecycleScope.launch {
             val dialogue = interactionHandler.handleTap(
                 mood = _currentMood.value,
                 context = contextMonitor.currentApp.value
             )
-            
             showDialogue(dialogue)
             recordInteraction("tap")
         }
     }
 
     private fun handlePetLongPress() {
-        Timber.d("Pet long pressed")
         lastInteractionTime = System.currentTimeMillis()
-        
-        // Open customization menu
         val intent = Intent(this, com.aetheria.forevercompanion.ui.customization.CustomizationActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
         startActivity(intent)
-        
         recordInteraction("long_press")
     }
 
     private fun showDialogue(message: String?) {
         message ?: return
-        
-        // Show speech bubble overlay
-        // Implementation will be in PetOverlayView composable
         Timber.d("Showing dialogue: $message")
+        // TODO: Implement speech bubble in PetOverlayView
     }
 
     private fun recordInteraction(type: String) {
-        lifecycleScope.launch {
-            interactionHandler.recordInteraction(type)
-        }
+        lifecycleScope.launch { interactionHandler.recordInteraction(type) }
     }
 
-    /**
-     * Foreground service setup
-     */
     private fun startForeground() {
         val notification = createForegroundNotification()
-        
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(
                 ForeverCompanionApplication.NOTIFICATION_ID_FOREGROUND,
@@ -464,24 +365,15 @@ class CompanionOverlayService : LifecycleService() {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
             )
         } else {
-            startForeground(
-                ForeverCompanionApplication.NOTIFICATION_ID_FOREGROUND,
-                notification
-            )
+            startForeground(ForeverCompanionApplication.NOTIFICATION_ID_FOREGROUND, notification)
         }
-        
-        Timber.d("Foreground service started")
     }
 
     private fun createForegroundNotification(): Notification {
         val intent = Intent(this, HomeActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            intent,
-            PendingIntent.FLAG_IMMUTABLE
+            this, 0, intent, PendingIntent.FLAG_IMMUTABLE
         )
-        
         return NotificationCompat.Builder(this, ForeverCompanionApplication.CHANNEL_COMPANION_PRESENCE)
             .setContentTitle("Your companion is here")
             .setContentText("Tap to open Forever Companion")
@@ -493,30 +385,20 @@ class CompanionOverlayService : LifecycleService() {
             .build()
     }
 
-    /**
-     * Cleanup
-     */
     private fun stopCompanion() {
-        Timber.d("Stopping companion overlay")
-        
         overlayView?.let {
-            try {
-                windowManager.removeView(it)
-            } catch (e: Exception) {
+            try { windowManager.removeView(it) } catch (e: Exception) {
                 Timber.e(e, "Failed to remove overlay view")
             }
         }
-        
         overlayView = null
         layoutParams = null
-        
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        Timber.d("CompanionOverlayService - Destroyed")
         stopCompanion()
     }
 
@@ -533,18 +415,9 @@ class CompanionOverlayService : LifecycleService() {
     }
 }
 
-/**
- * Data class for magnetic zones
- */
-data class MagneticZone(
-    val gravity: Int,
-    val offset: Int
-)
+data class MagneticZone(val gravity: Int, val offset: Int)
 
-/**
- * Composable for the pet overlay container
- */
-@Composable
+@androidx.compose.runtime.Composable
 private fun PetOverlayContainer(
     petState: PetState,
     isMinimized: Boolean,
@@ -552,7 +425,7 @@ private fun PetOverlayContainer(
     onTap: () -> Unit,
     onLongPress: () -> Unit
 ) {
-    Box(
+    androidx.compose.foundation.layout.Box(
         modifier = Modifier
             .size(if (isMinimized) 40.dp else 100.dp)
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f))

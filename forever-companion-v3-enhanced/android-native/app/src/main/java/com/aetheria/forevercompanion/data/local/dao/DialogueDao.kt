@@ -5,13 +5,27 @@ import com.aetheria.forevercompanion.data.local.entities.DialogueEntity
 import com.aetheria.forevercompanion.data.local.entities.DialogueCategory
 import com.aetheria.forevercompanion.data.local.entities.PetMood
 import com.aetheria.forevercompanion.data.local.entities.RelationshipPhase
-import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface DialogueDao {
-    @Query("""SELECT * FROM dialogues WHERE category = :cat AND mood = :mood 
-              AND relationshipPhase <= :phase ORDER BY RANDOM() LIMIT 1""")
-    suspend fun getRandom(cat: DialogueCategory, mood: PetMood, phase: RelationshipPhase): DialogueEntity?
+
+    // FIX: Replaced "relationshipPhase <= :phase" (broken enum string comparison) with
+    // explicit IN list matching allowed phases up to the current one.
+    // STRANGER phase gets only STRANGER dialogues.
+    // FRIEND phase gets STRANGER + FRIEND dialogues.
+    // COMPANION phase gets all dialogues.
+    @Query("""
+        SELECT * FROM dialogues 
+        WHERE category = :cat 
+          AND mood = :mood 
+          AND relationshipPhase IN (:allowedPhases)
+        ORDER BY RANDOM() LIMIT 1
+    """)
+    suspend fun getRandom(
+        cat: DialogueCategory,
+        mood: PetMood,
+        allowedPhases: List<RelationshipPhase>
+    ): DialogueEntity?
 
     @Query("SELECT * FROM dialogues WHERE category = :cat ORDER BY RANDOM() LIMIT 1")
     suspend fun getRandomByCategory(cat: DialogueCategory): DialogueEntity?

@@ -2,6 +2,8 @@ package com.aetheria.forevercompanion.data.local.di
 
 import android.content.Context
 import androidx.room.Room
+import com.aetheria.forevercompanion.data.AppDatabase
+import com.aetheria.forevercompanion.data.dao.ChatMessageDao
 import com.aetheria.forevercompanion.data.local.dao.*
 import com.aetheria.forevercompanion.data.local.database.CompanionDatabase
 import dagger.Module
@@ -15,13 +17,23 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
 
+    // Primary companion database
     @Provides
     @Singleton
-    fun provideDatabase(@ApplicationContext context: Context): CompanionDatabase =
+    fun provideCompanionDatabase(@ApplicationContext context: Context): CompanionDatabase =
         Room.databaseBuilder(context, CompanionDatabase::class.java, "forever_companion_db")
             .fallbackToDestructiveMigration()
             .build()
 
+    // Legacy chat database — separate file to avoid schema collision
+    @Provides
+    @Singleton
+    fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase =
+        Room.databaseBuilder(context, AppDatabase::class.java, "chat_legacy_db")
+            .fallbackToDestructiveMigration()
+            .build()
+
+    // CompanionDatabase DAOs
     @Provides fun provideCompanionDao(db: CompanionDatabase) = db.companionDao()
     @Provides fun provideBondProgressDao(db: CompanionDatabase) = db.bondProgressDao()
     @Provides fun provideEmotionalStateDao(db: CompanionDatabase) = db.emotionalStateDao()
@@ -34,4 +46,7 @@ object DatabaseModule {
     @Provides fun provideWellnessDao(db: CompanionDatabase) = db.wellnessDao()
     @Provides fun providePreferencesDao(db: CompanionDatabase) = db.preferencesDao()
     @Provides fun provideDialogueDao(db: CompanionDatabase) = db.dialogueDao()
+
+    // Legacy chat DAO
+    @Provides fun provideChatMessageDao(db: AppDatabase): ChatMessageDao = db.chatMessageDao()
 }

@@ -13,6 +13,7 @@ import com.aetheria.forevercompanion.data.local.entities.PetMood
 import com.google.gson.Gson
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.flow.firstOrNull
 import timber.log.Timber
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -30,45 +31,40 @@ class MemorySnapshotWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result {
         Timber.d("MemorySnapshotWorker: Creating daily snapshot")
-        try {
+        return try {
             val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
             val oneDayAgo = System.currentTimeMillis() - 86_400_000L
 
-            // Get companion
-            var companionId: String? = null
-            companionDao.getActiveCompanion().collect { c ->
-                companionId = c?.id
-                return@collect
-            }
-            val id = companionId ?: return Result.success()
+            // FIX: Use firstOrNull() instead of collect() to avoid hanging forever
+            val companion = companionDao.getActiveCompanion().firstOrNull()
+                ?: return Result.success()
 
-            // Get today's usage
             val usageToday = appUsageDao.getSince(oneDayAgo)
             val topApps = usageToday.sortedByDescending { it.duration }
                 .take(5).map { it.packageName }
             val totalScreenTime = usageToday.sumOf { it.duration }
 
-            // Determine dominant mood
-            val moodSince = emotionalStateDao.getSince(id, oneDayAgo)
+            val moodSince = emotionalStateDao.getSince(companion.id, oneDayAgo)
             val dominantMood = moodSince.groupBy { it.mood }
                 .maxByOrNull { it.value.size }?.key ?: PetMood.HAPPY
 
+            val screenMinutes = totalScreenTime / 60_000
             val snapshot = MemorySnapshotEntity(
-                companionId = id,
+                companionId = companion.id,
                 date = today,
-                summary = "Day with $dominantMood mood. Screen time: ${totalScreenTime / 60_000}min.",
+                summary = "A day with ${dominantMood.name.lowercase()} mood. Screen time: ${screenMinutes}min.",
                 topAppsUsed = Gson().toJson(topApps),
                 totalScreenTime = totalScreenTime,
                 dominantMood = dominantMood,
-            significantMoments = "[]"
+                significantMoments = "[]"
             )
 
             memorySnapshotDao.insert(snapshot)
             Timber.d("MemorySnapshotWorker: Snapshot saved for $today")
-            return Result.success()
+            Result.success()
         } catch (e: Exception) {
             Timber.e(e, "MemorySnapshotWorker failed")
-            return Result.retry()
+            Result.retry()
         }
     }
 }

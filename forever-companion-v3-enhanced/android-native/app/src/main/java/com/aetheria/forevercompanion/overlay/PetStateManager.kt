@@ -9,9 +9,7 @@ import com.aetheria.forevercompanion.data.local.entities.PetMood
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import javax.inject.Inject
@@ -29,10 +27,13 @@ class PetStateManager @Inject constructor(
 
     init {
         scope.launch {
-            companionDao.getActiveCompanion().collect { companion ->
-                if (companion != null) {
-                    bondProgressDao.getByCompanionId(companion.id).collect { bond ->
-                        _currentState.value = _currentState.value.copy(
+            // FIX: Use flatMapLatest instead of nested collect() to avoid memory leaks
+            // and ensure bond progress updates are always tied to the latest companion.
+            companionDao.getActiveCompanion()
+                .filterNotNull()
+                .flatMapLatest { companion ->
+                    bondProgressDao.getByCompanionId(companion.id).map { bond ->
+                        PetState(
                             companion = companion,
                             bondProgress = bond,
                             evolutionStage = companion.evolutionStage,
@@ -40,7 +41,10 @@ class PetStateManager @Inject constructor(
                         )
                     }
                 }
-            }
+                .catch { e -> Timber.e(e, "PetStateManager flow error") }
+                .collect { newState ->
+                    _currentState.value = newState
+                }
         }
     }
 

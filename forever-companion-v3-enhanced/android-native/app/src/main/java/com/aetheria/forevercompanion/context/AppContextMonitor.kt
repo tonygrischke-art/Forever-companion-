@@ -7,6 +7,7 @@ import com.aetheria.forevercompanion.data.local.entities.AppCategory
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,10 +25,11 @@ class AppContextMonitor @Inject constructor(
     val currentApp: StateFlow<String> = _currentApp
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var monitoringJob: Job? = null  // FIX: Track job to prevent duplicate loops
+
     private val usageStatsManager =
         context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
 
-    // Known app-to-category mappings
     private val categoryMap = mapOf(
         "com.google.android.gm" to AppCategory.PRODUCTIVITY,
         "com.microsoft.teams" to AppCategory.PRODUCTIVITY,
@@ -44,26 +46,35 @@ class AppContextMonitor @Inject constructor(
         "com.mojang.minecraftpe" to AppCategory.GAMING,
         "com.netflix.mediaclient" to AppCategory.ENTERTAINMENT,
         "com.spotify.music" to AppCategory.ENTERTAINMENT,
-        "com.youtube.android" to AppCategory.ENTERTAINMENT,
         "com.google.android.youtube" to AppCategory.ENTERTAINMENT,
         "org.khanacademy.android" to AppCategory.EDUCATION,
         "com.duolingo" to AppCategory.EDUCATION,
-        "com.samsung.android.dialer" to AppCategory.UTILITY,
         "com.android.dialer" to AppCategory.UTILITY,
         "com.android.settings" to AppCategory.UTILITY,
     )
 
+    // FIX: Guard against multiple monitoring loops being started
     fun startMonitoring() {
-        scope.launch {
+        if (monitoringJob?.isActive == true) {
+            Timber.d("AppContextMonitor: Already monitoring, skipping duplicate start")
+            return
+        }
+        monitoringJob = scope.launch {
+            Timber.d("AppContextMonitor: Starting polling loop")
             while (true) {
                 val foregroundApp = getForegroundApp()
                 if (foregroundApp != null && foregroundApp != _currentApp.value) {
                     _currentApp.value = foregroundApp
                     Timber.d("App context: $foregroundApp")
                 }
-                delay(2000) // Poll every 2 seconds
+                delay(2000)
             }
         }
+    }
+
+    fun stopMonitoring() {
+        monitoringJob?.cancel()
+        monitoringJob = null
     }
 
     private fun getForegroundApp(): String? {
@@ -74,15 +85,10 @@ class AppContextMonitor @Inject constructor(
     }
 
     fun getAppCategory(packageName: String): AppCategory {
-        // Check our known map first
         categoryMap[packageName]?.let { return it }
-
-        // Try system category
         return try {
-            val info = context.packageManager.getApplicationInfo(packageName, 0)
-            when (context.packageManager.getApplicationLabel(info).toString().lowercase()) {
-                else -> AppCategory.UNKNOWN
-            }
+            context.packageManager.getApplicationInfo(packageName, 0)
+            AppCategory.UNKNOWN
         } catch (e: PackageManager.NameNotFoundException) {
             AppCategory.UNKNOWN
         }
